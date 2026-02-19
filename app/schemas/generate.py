@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def clamp_0_1(v: float) -> float:
@@ -50,6 +50,8 @@ class ProspectAnalysisOutput(BaseModel):
 
 
 class GenerateSequenceResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    
     sequence_id: str
     prospect_analysis: ProspectAnalysisOutput
     messages: list[MessageOutput]

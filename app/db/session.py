@@ -13,6 +13,8 @@ def get_engine():
         _engine = create_async_engine(
             settings.database_url,
             echo=False,
+            pool_pre_ping=True,  # Verify connections before using them
+            pool_recycle=300,  # Recycle connections after 5 minutes
         )
     return _engine
 
@@ -44,6 +46,25 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db():
+    """
+    Initialize database - create tables if they don't exist.
+    Includes retry logic for Railway deployments where DB might not be ready immediately.
+    """
+    import asyncio
+    
     engine = get_engine()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    max_retries = 5
+    retry_delay = 2  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            return  # Success
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"Database connection attempt {attempt + 1} failed: {e}. Retrying in {retry_delay}s...")
+                await asyncio.sleep(retry_delay)
+            else:
+                print(f"Failed to connect to database after {max_retries} attempts: {e}")
+                raise
