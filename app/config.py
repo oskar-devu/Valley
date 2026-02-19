@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     # DATABASE_URL will be read automatically (case-insensitive)
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/valley"
     
-    # AI Provider: "openai" or "groq" (defaults to groq if groq_api_key is set, else openai)
-    ai_provider: str = "openai"
+    # AI Provider: "openai" or "groq" (defaults to groq)
+    ai_provider: str = "groq"
     openai_api_key: str = ""
     groq_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
@@ -60,13 +60,16 @@ class Settings(BaseSettings):
         self.database_url = normalize_database_url(self.database_url)
         
         # Auto-detect AI provider based on available API keys
-        if self.groq_api_key and not self.openai_api_key:
+        # Defaults to Groq if available, falls back to OpenAI if Groq key is missing
+        if self.groq_api_key:
             self.ai_provider = "groq"
             print("ℹ Using Groq AI provider (free tier)")
         elif self.openai_api_key:
             self.ai_provider = "openai"
             print("ℹ Using OpenAI AI provider")
         else:
+            # Default to Groq even if no keys are set (will fail at runtime if key is missing)
+            self.ai_provider = "groq"
             print("⚠ No AI API keys found. Set GROQ_API_KEY or OPENAI_API_KEY")
 
 
