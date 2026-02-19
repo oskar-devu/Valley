@@ -11,7 +11,15 @@ from app import models  # noqa: F401
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()
+    # Try to initialize DB, but don't fail startup if it's not ready yet
+    # This allows the app to start and health checks to work
+    try:
+        await init_db()
+    except Exception as e:
+        print(f"WARNING: Database initialization failed during startup: {e}")
+        print("App will start but database operations may fail until connection is established.")
+        # Don't raise - allow app to start for debugging
+    
     yield
     # shutdown: close engine if needed
     from app.db.session import get_engine
