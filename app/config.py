@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     groq_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
-    groq_model: str = "llama-3.1-70b-versatile"  # Free, fast model
+    groq_model: str = "llama-3.3-70b-versatile"  # Free, fast model
 
     model_config = SettingsConfigDict(
         env_file=".env",
