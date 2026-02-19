@@ -28,8 +28,13 @@ class Settings(BaseSettings):
     # Pydantic Settings v2 automatically reads from environment variables
     # DATABASE_URL will be read automatically (case-insensitive)
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/valley"
+    
+    # AI Provider: "openai" or "groq" (defaults to groq if groq_api_key is set, else openai)
+    ai_provider: str = "openai"
     openai_api_key: str = ""
+    groq_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+    groq_model: str = "llama-3.1-70b-versatile"  # Free, fast model
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -53,6 +58,16 @@ class Settings(BaseSettings):
         # Normalize database URL for Railway compatibility
         # Railway provides postgres:// but we need postgresql+asyncpg://
         self.database_url = normalize_database_url(self.database_url)
+        
+        # Auto-detect AI provider based on available API keys
+        if self.groq_api_key and not self.openai_api_key:
+            self.ai_provider = "groq"
+            print("ℹ Using Groq AI provider (free tier)")
+        elif self.openai_api_key:
+            self.ai_provider = "openai"
+            print("ℹ Using OpenAI AI provider")
+        else:
+            print("⚠ No AI API keys found. Set GROQ_API_KEY or OPENAI_API_KEY")
 
 
 settings = Settings()

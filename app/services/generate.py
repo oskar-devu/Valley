@@ -113,9 +113,10 @@ class GenerateSequenceService:
         total_in = analysis_in_tok + seq_in_tok
         total_out = analysis_out_tok + seq_out_tok
         cost = AIService.estimate_cost(total_in, total_out) if (total_in or total_out) else None
+        model_name = settings.groq_model if settings.ai_provider == "groq" else settings.openai_model
         ai_gen = AIGeneration(
             sequence_id=sequence.id,
-            model_used=settings.openai_model,
+            model_used=model_name,
             input_tokens=total_in,
             output_tokens=total_out,
             cost_estimate=cost,
@@ -135,11 +136,12 @@ class GenerateSequenceService:
         ]
         token_usage = {"input_tokens": total_in, "output_tokens": total_out, "cost_estimate_usd": cost}
 
+        model_name = settings.groq_model if settings.ai_provider == "groq" else settings.openai_model
         return GenerateSequenceResponse(
             sequence_id=sequence.id,
             prospect_analysis=analysis_out,
             messages=message_outputs,
             thinking_process_summary=seq_data.get("thinking_summary"),
-            model_used=settings.openai_model,
+            model_used=model_name,
             token_usage=token_usage,
         )

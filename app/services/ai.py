@@ -1,5 +1,6 @@
 """
 AI service: profile analysis and sequence generation with token tracking and error handling.
+Supports both OpenAI and Groq (free tier).
 """
 import json
 import logging
@@ -7,6 +8,14 @@ from typing import Any
 
 from openai import AsyncOpenAI
 from openai import APIError as OpenAIAPIError
+
+try:
+    from groq import AsyncGroq
+    from groq import APIError as GroqAPIError
+    GROQ_AVAILABLE = True
+except ImportError:
+    GROQ_AVAILABLE = False
+    GroqAPIError = Exception
 
 from app.config import settings
 from app.prompts import tov_to_instructions
@@ -37,7 +46,7 @@ def _parse_json_from_content(content: str) -> dict[str, Any]:
     return json.loads(text)
 
 
-async def _chat(
+async def _chat_openai(
     client: AsyncOpenAI,
     system: str,
     user: str,
@@ -66,16 +75,56 @@ async def _chat(
     return data, input_tokens, output_tokens
 
 
+async def _chat_groq(
+    client: AsyncGroq,
+    system: str,
+    user: str,
+    model: str | None = None,
+) -> tuple[dict[str, Any], int, int]:
+    """Call Groq chat, return parsed JSON, input_tokens, output_tokens."""
+    model = model or settings.groq_model
+    resp = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        temperature=0.6,
+        response_format={"type": "json_object"},  # Groq supports JSON mode
+    )
+    choice = resp.choices[0]
+    content = choice.message.content or "{}"
+    usage = getattr(resp, "usage", None)
+    input_tokens = usage.prompt_tokens if usage else 0
+    output_tokens = usage.completion_tokens if usage else 0
+    try:
+        data = _parse_json_from_content(content)
+    except json.JSONDecodeError as e:
+        logger.warning("AI returned invalid JSON: %s", e)
+        data = {"error": content, "summary": "Parse failed", "messages": [], "signals": []}
+    return data, input_tokens, output_tokens
+
+
 class AIService:
     def __init__(self) -> None:
-        self._client: AsyncOpenAI | None = None
+        self._openai_client: AsyncOpenAI | None = None
+        self._groq_client: AsyncGroq | None = None
 
-    def _get_client(self) -> AsyncOpenAI:
-        if self._client is None:
+    def _get_openai_client(self) -> AsyncOpenAI:
+        if self._openai_client is None:
             if not settings.openai_api_key:
                 raise ValueError("OPENAI_API_KEY is not set")
-            self._client = AsyncOpenAI(api_key=settings.openai_api_key)
-        return self._client
+            self._openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+        return self._openai_client
+
+    def _get_groq_client(self) -> AsyncGroq:
+        if self._groq_client is None:
+            if not GROQ_AVAILABLE:
+                raise ValueError("Groq package not installed. Run: pip install groq")
+            if not settings.groq_api_key:
+                raise ValueError("GROQ_API_KEY is not set")
+            self._groq_client = AsyncGroq(api_key=settings.groq_api_key)
+        return self._groq_client
 
     async def analyze_prospect(
         self,
@@ -89,10 +138,13 @@ class AIService:
             company_context=company_context,
         )
         try:
-            data, inp, out = await _chat(self._get_client(), system, user)
+            if settings.ai_provider == "groq":
+                data, inp, out = await _chat_groq(self._get_groq_client(), system, user)
+            else:
+                data, inp, out = await _chat_openai(self._get_openai_client(), system, user)
             return data, inp, out
-        except OpenAIAPIError as e:
-            logger.exception("OpenAI API error during profile analysis: %s", e)
+        except (OpenAIAPIError, GroqAPIError) as e:
+            logger.exception("AI API error during profile analysis: %s", e)
             # Fallback: minimal analysis so the pipeline can continue
             fallback = {
                 "summary": "Profile analysis unavailable (API error). Proceeding with generic B2B prospect.",
@@ -122,10 +174,13 @@ class AIService:
             sequence_length=sequence_length,
         )
         try:
-            data, inp, out = await _chat(self._get_client(), system, user)
+            if settings.ai_provider == "groq":
+                data, inp, out = await _chat_groq(self._get_groq_client(), system, user)
+            else:
+                data, inp, out = await _chat_openai(self._get_openai_client(), system, user)
             return data, inp, out
-        except OpenAIAPIError as e:
-            logger.exception("OpenAI API error during sequence generation: %s", e)
+        except (OpenAIAPIError, GroqAPIError) as e:
+            logger.exception("AI API error during sequence generation: %s", e)
             fallback = {
                 "thinking_summary": "Generation failed due to API error.",
                 "messages": [
