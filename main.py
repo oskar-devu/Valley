@@ -11,14 +11,34 @@ from app import models  # noqa: F401
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Try to initialize DB, but don't fail startup if it's not ready yet
-    # This allows the app to start and health checks to work
+    # Log startup info
+    import os
+    print("=" * 60)
+    print("Application starting up...")
+    print(f"Environment: {'Railway' if os.getenv('RAILWAY_ENVIRONMENT') else 'Local'}")
+    
+    # Check if DATABASE_URL is set
+    db_url_env = os.getenv("DATABASE_URL")
+    if db_url_env:
+        print(f"✓ DATABASE_URL found in environment")
+    else:
+        print("⚠ DATABASE_URL NOT found in environment variables!")
+        print("  Please ensure PostgreSQL service is added and linked in Railway")
+    
+    # Try to initialize DB
     try:
         await init_db()
+        print("✓ Database initialized successfully")
     except Exception as e:
-        print(f"WARNING: Database initialization failed during startup: {e}")
-        print("App will start but database operations may fail until connection is established.")
-        # Don't raise - allow app to start for debugging
+        print(f"✗ Database initialization failed: {e}")
+        print("\nTROUBLESHOOTING:")
+        print("1. In Railway dashboard, check if PostgreSQL service exists")
+        print("2. Ensure PostgreSQL service is linked to your app service")
+        print("3. Check Variables tab - DATABASE_URL should be auto-set by Railway")
+        print("4. Verify PostgreSQL service is running (not paused)")
+        raise  # Fail startup so Railway shows the error
+    
+    print("=" * 60)
     
     yield
     # shutdown: close engine if needed
